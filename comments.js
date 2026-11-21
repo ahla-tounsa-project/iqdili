@@ -336,7 +336,7 @@ async function moderateComment(button){
   if(error)throw error;
   if(data!==true)throw new Error("لم يتم تغيير حالة التعليق");
   moderationBusy=false;
-  await loadModerationComments();
+  await loadModerationComments({reset:true});
   document.querySelectorAll("[data-post-comments]").forEach(widget=>{
    loaded.delete(widget);
    const panel=widget.querySelector("[data-comments-panel]");
