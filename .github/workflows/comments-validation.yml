@@ -64,3 +64,8 @@ jobs:
           grep -q 'create table if not exists public.post_comments' supabase/migrations/20261115144500_post_comments.sql
           grep -q 'enable row level security' supabase/migrations/20261115144500_post_comments.sql
           grep -q "coalesce(((select auth.jwt()) ->> 'is_anonymous')::boolean, true) = false" supabase/migrations/20261115144500_post_comments.sql
+          grep -q 'id="ahla-comment-moderation"' comments.js
+          grep -q 'from("post_comments_moderation")' comments.js
+          grep -q 'rpc("set_post_comment_visibility"' comments.js
+          grep -q 'rpc("is_admin")' comments.js
+          grep -q 'escapeHtml(row.body)' comments.js
