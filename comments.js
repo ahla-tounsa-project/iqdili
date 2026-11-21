@@ -322,6 +322,7 @@ async function moderateComment(button){
   const {data,error}=await client.rpc("set_post_comment_visibility",{p_comment_id:id,p_status:nextStatus});
   if(error)throw error;
   if(data!==true)throw new Error("لم يتم تغيير حالة التعليق");
+  moderationBusy=false;
   await loadModerationComments();
   document.querySelectorAll("[data-post-comments]").forEach(widget=>{
    loaded.delete(widget);
