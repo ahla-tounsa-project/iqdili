@@ -10,7 +10,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ahla-tounsa-android-release
@@ -99,8 +99,20 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  publish:
+    if: inputs.publish_release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified APK artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: ahla-tounsa-signed-release-apk
+          path: dist/
+
       - name: Publish stable signed release
-        if: inputs.publish_release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
