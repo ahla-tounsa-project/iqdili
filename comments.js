@@ -162,9 +162,11 @@ async function submitComment(form,widget){
 }
 function onClick(event){
  const modRefresh=event.target.closest("[data-comment-mod-refresh]");
- if(modRefresh){loadModerationComments();return;}
+ if(modRefresh){loadModerationComments({reset:true});return;}
  const modAction=event.target.closest("[data-comment-moderate]");
  if(modAction){moderateComment(modAction);return;}
+ const modMore=event.target.closest("[data-comment-mod-more]");
+ if(modMore){loadModerationComments();return;}
  const toggle=event.target.closest("[data-comments-toggle]");
  if(toggle){
   const widget=toggle.closest("[data-post-comments]");
@@ -252,6 +254,8 @@ function onSubmit(event){
 
 let moderationPanel=null;
 let moderationBusy=false;
+let moderationOffset=0;
+let moderationHasMore=false;
 function ensureModerationPanel(){
  const host=document.getElementById("admin-panel");
  if(!host)return null;
@@ -260,7 +264,7 @@ function ensureModerationPanel(){
  moderationPanel.id="ahla-comment-moderation";
  moderationPanel.hidden=true;
  moderationPanel.style.cssText="margin:16px 0;padding:14px;border:1px solid #dce7e2;border-radius:14px;background:#fbfdfc";
- moderationPanel.innerHTML='<h3 style="margin:0 0 6px">مراجعة تعليقات المنشورات</h3><p class="post-comment-login">التعليقات المنشورة والمخفية — هذه الشاشة للمشرفين فقط.</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button type="button" data-comment-mod-refresh>تحديث التعليقات</button><span class="post-comment-login" data-comment-mod-status aria-live="polite"></span></div><div data-comment-mod-list></div>';
+ moderationPanel.innerHTML='<h3 style="margin:0 0 6px">مراجعة تعليقات المنشورات</h3><p class="post-comment-login">التعليقات المنشورة والمخفية — هذه الشاشة للمشرفين فقط.</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button type="button" data-comment-mod-refresh>تحديث التعليقات</button><span class="post-comment-login" data-comment-mod-status aria-live="polite"></span></div><div data-comment-mod-list></div><button type="button" data-comment-mod-more hidden>تحميل تعليقات أقدم</button>';
  const welcome=host.querySelector("#admin-welcome");
  if(welcome)welcome.insertAdjacentElement("afterend",moderationPanel);else host.prepend(moderationPanel);
  return moderationPanel;
@@ -285,32 +289,41 @@ async function refreshModerationAccess(){
   console.warn("Comment moderation access:",error);
  }
 }
-async function loadModerationComments(){
+async function loadModerationComments({reset=false}={}){
  const panel=ensureModerationPanel();
  const list=panel?.querySelector("[data-comment-mod-list]");
  const status=panel?.querySelector("[data-comment-mod-status]");
+ const more=panel?.querySelector("[data-comment-mod-more]");
  if(!panel||panel.hidden||!list||moderationBusy)return;
+ if(reset){moderationOffset=0;moderationHasMore=false;list.innerHTML="";}
+ const offset=moderationOffset;
  moderationBusy=true;
- if(status)status.textContent="جاري تحميل آخر 100 تعليق...";
- list.innerHTML='<p class="post-comment-login">جاري التحميل...</p>';
+ if(status)status.textContent=offset?"جاري تحميل تعليقات أقدم...":"جاري تحميل التعليقات...";
+ if(more)more.disabled=true;
+ if(!offset)list.innerHTML='<p class="post-comment-login">جاري التحميل...</p>';
  try{
   const {data,error}=await client.from("post_comments_moderation")
    .select("id,post_table,post_id,parent_id,body,status,created_at")
    .order("created_at",{ascending:false})
    .order("id",{ascending:false})
-   .range(0,99);
+   .range(offset,offset+99);
   if(error)throw error;
   const rows=data||[];
-  if(status)status.textContent="آخر "+rows.length+" تعليق";
-  list.innerHTML=rows.length?rows.map(row=>{
+  const html=rows.map(row=>{
    const hidden=row.status==="hidden";
    return '<article class="post-comment" data-moderation-comment="'+Number(row.id)+'"><div class="post-comment-meta"><strong>'+moderationTargetLabel(row)+' · منشور #'+Number(row.post_id)+(row.parent_id?' · ردّ على تعليق #'+Number(row.parent_id):' · تعليق رئيسي')+'</strong><span>'+escapeHtml(new Date(row.created_at).toLocaleString("ar-TN"))+'</span></div><p class="post-comment-body">'+escapeHtml(row.body)+'</p><div class="post-comment-meta"><span>الحالة: '+(hidden?"مخفي":"منشور")+'</span><button type="button" class="post-comment-action" data-comment-moderate="'+Number(row.id)+'" data-next-status="'+(hidden?"published":"hidden")+'">'+(hidden?"إعادة النشر":"إخفاء التعليق")+'</button></div></article>';
-  }).join(""):'<p class="post-comment-login">ما فماش تعليقات للمراجعة حالياً.</p>';
+  }).join("");
+  if(offset===0)list.innerHTML=html||'<p class="post-comment-login">ما فماش تعليقات للمراجعة حالياً.</p>';
+  else if(html)list.insertAdjacentHTML("beforeend",html);
+  moderationOffset=offset+rows.length;
+  moderationHasMore=rows.length===100;
+  if(more){more.hidden=!moderationHasMore;more.disabled=false;}
+  if(status)status.textContent="تم عرض "+moderationOffset+" تعليق"+(moderationHasMore?" — توجد تعليقات أقدم":" — وصلت لآخر القائمة");
  }catch(error){
   if(status)status.textContent="تعذّر تحميل التعليقات.";
-  list.innerHTML='<p class="post-comment-error">ما نجّمش نحمّل قائمة الإشراف. تثبّت من صلاحيات المشرف وقاعدة البيانات.</p>';
+  if(!offset)list.innerHTML='<p class="post-comment-error">ما نجّمش نحمّل قائمة الإشراف. تثبّت من صلاحيات المشرف وقاعدة البيانات.</p>';
   console.warn("Comment moderation list:",error);
- }finally{moderationBusy=false;}
+ }finally{moderationBusy=false;if(more)more.disabled=false;}
 }
 async function moderateComment(button){
  if(moderationBusy)return;
