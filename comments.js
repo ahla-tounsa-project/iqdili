@@ -161,6 +161,10 @@ async function submitComment(form,widget){
  }
 }
 function onClick(event){
+ const modRefresh=event.target.closest("[data-comment-mod-refresh]");
+ if(modRefresh){loadModerationComments();return;}
+ const modAction=event.target.closest("[data-comment-moderate]");
+ if(modAction){moderateComment(modAction);return;}
  const toggle=event.target.closest("[data-comments-toggle]");
  if(toggle){
   const widget=toggle.closest("[data-post-comments]");
@@ -245,6 +249,91 @@ function onSubmit(event){
  const widget=form.closest("[data-post-comments]");
  if(widget)submitComment(form,widget);
 }
+
+let moderationPanel=null;
+let moderationBusy=false;
+function ensureModerationPanel(){
+ const host=document.getElementById("admin-panel");
+ if(!host)return null;
+ if(moderationPanel&&moderationPanel.isConnected)return moderationPanel;
+ moderationPanel=document.createElement("section");
+ moderationPanel.id="ahla-comment-moderation";
+ moderationPanel.hidden=true;
+ moderationPanel.style.cssText="margin:16px 0;padding:14px;border:1px solid #dce7e2;border-radius:14px;background:#fbfdfc";
+ moderationPanel.innerHTML='<h3 style="margin:0 0 6px">مراجعة تعليقات المنشورات</h3><p class="post-comment-login">التعليقات المنشورة والمخفية — هذه الشاشة للمشرفين فقط.</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button type="button" data-comment-mod-refresh>تحديث التعليقات</button><span class="post-comment-login" data-comment-mod-status aria-live="polite"></span></div><div data-comment-mod-list></div>';
+ const welcome=host.querySelector("#admin-welcome");
+ if(welcome)welcome.insertAdjacentElement("afterend",moderationPanel);else host.prepend(moderationPanel);
+ return moderationPanel;
+}
+function moderationTargetLabel(row){
+ return ({market_posts:"السوق",service_requests:"الخدمات",job_posts:"فرص العمل",real_estate_posts:"العقارات"})[row.post_table]||"منشور";
+}
+async function refreshModerationAccess(){
+ if(!client)return;
+ const panel=ensureModerationPanel();
+ if(!panel)return;
+ try{
+  const {data:userData,error:userError}=await client.auth.getUser();
+  if(userError)throw userError;
+  if(!userData?.user||userData.user.is_anonymous){panel.hidden=true;return;}
+  const {data:allowed,error}=await client.rpc("is_admin");
+  if(error)throw error;
+  panel.hidden=allowed!==true;
+  if(allowed===true)await loadModerationComments();
+ }catch(error){
+  panel.hidden=true;
+  console.warn("Comment moderation access:",error);
+ }
+}
+async function loadModerationComments(){
+ const panel=ensureModerationPanel();
+ const list=panel?.querySelector("[data-comment-mod-list]");
+ const status=panel?.querySelector("[data-comment-mod-status]");
+ if(!panel||panel.hidden||!list||moderationBusy)return;
+ moderationBusy=true;
+ if(status)status.textContent="جاري تحميل آخر 100 تعليق...";
+ list.innerHTML='<p class="post-comment-login">جاري التحميل...</p>';
+ try{
+  const {data,error}=await client.from("post_comments_moderation")
+   .select("id,post_table,post_id,parent_id,body,status,created_at")
+   .order("created_at",{ascending:false})
+   .order("id",{ascending:false})
+   .range(0,99);
+  if(error)throw error;
+  const rows=data||[];
+  if(status)status.textContent="آخر "+rows.length+" تعليق";
+  list.innerHTML=rows.length?rows.map(row=>{
+   const hidden=row.status==="hidden";
+   return '<article class="post-comment" data-moderation-comment="'+Number(row.id)+'"><div class="post-comment-meta"><strong>'+moderationTargetLabel(row)+' · منشور #'+Number(row.post_id)+(row.parent_id?' · ردّ على تعليق #'+Number(row.parent_id):' · تعليق رئيسي')+'</strong><span>'+escapeHtml(new Date(row.created_at).toLocaleString("ar-TN"))+'</span></div><p class="post-comment-body">'+escapeHtml(row.body)+'</p><div class="post-comment-meta"><span>الحالة: '+(hidden?"مخفي":"منشور")+'</span><button type="button" class="post-comment-action" data-comment-moderate="'+Number(row.id)+'" data-next-status="'+(hidden?"published":"hidden")+'">'+(hidden?"إعادة النشر":"إخفاء التعليق")+'</button></div></article>';
+  }).join(""):'<p class="post-comment-login">ما فماش تعليقات للمراجعة حالياً.</p>';
+ }catch(error){
+  if(status)status.textContent="تعذّر تحميل التعليقات.";
+  list.innerHTML='<p class="post-comment-error">ما نجّمش نحمّل قائمة الإشراف. تثبّت من صلاحيات المشرف وقاعدة البيانات.</p>';
+  console.warn("Comment moderation list:",error);
+ }finally{moderationBusy=false;}
+}
+async function moderateComment(button){
+ if(moderationBusy)return;
+ const id=Number(button.dataset.commentModerate),nextStatus=button.dataset.nextStatus;
+ if(!Number.isSafeInteger(id)||id<1||!["published","hidden"].includes(nextStatus))return;
+ if(!window.confirm(nextStatus==="hidden"?"تأكيد إخفاء التعليق عن العموم؟":"تأكيد إعادة نشر التعليق؟"))return;
+ moderationBusy=true;button.disabled=true;
+ try{
+  const {data,error}=await client.rpc("set_post_comment_visibility",{p_comment_id:id,p_status:nextStatus});
+  if(error)throw error;
+  if(data!==true)throw new Error("لم يتم تغيير حالة التعليق");
+  await loadModerationComments();
+  document.querySelectorAll("[data-post-comments]").forEach(widget=>{
+   loaded.delete(widget);
+   const panel=widget.querySelector("[data-comments-panel]");
+   if(panel&&!panel.hidden)loadComments(widget);
+  });
+ }catch(error){
+  alert("تعذّر تغيير حالة التعليق. تثبّت من الصلاحيات وعاود.");
+  console.warn("Comment moderation action:",error);
+ }finally{moderationBusy=false;button.disabled=false;}
+}
+
 function init(){
  if(client||!window.ahlaTounsaSupabase)return;
  client=window.ahlaTounsaSupabase;
@@ -255,6 +344,7 @@ function init(){
   loaded=new WeakSet();
   // Defer Supabase queries until the auth callback has returned and released its lock.
   window.setTimeout(()=>{
+   refreshModerationAccess();
    document.querySelectorAll("[data-post-comments]:not([hidden]) [data-comments-panel]").forEach(panel=>{
     if(!panel.hidden){const widget=panel.closest("[data-post-comments]");if(widget)loadComments(widget);}
    });
@@ -262,6 +352,7 @@ function init(){
  });
  document.addEventListener("click",onClick);
  document.addEventListener("submit",onSubmit);
+ refreshModerationAccess();
 }
 if(window.ahlaTounsaSupabase)init();
 window.addEventListener("ahla:supabase-ready",init);
