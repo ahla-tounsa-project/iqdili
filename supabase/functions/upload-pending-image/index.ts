@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
       return reply({ error: "التحقق من Cloudflare ما نجحش. عاود المحاولة." }, 403);
     }
 
-    const clientIp = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "";
+    const clientIp = req.headers.get("cf-connecting-ip")?.trim() || "";
     if (!clientIp) return reply({ error: "تعذّر التثبت من الاتصال. عاود المحاولة." }, 503);
     const fingerprint = await sha256(clientIp + ":" + serviceRoleKey);
     const limitResponse = await fetch(supabaseUrl + "/rest/v1/rpc/consume_pending_image_rate_limit", {
