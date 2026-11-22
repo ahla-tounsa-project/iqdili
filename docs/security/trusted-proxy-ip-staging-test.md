@@ -11,6 +11,17 @@ They cannot prove that the hosted Supabase/Cloudflare gateway overwrites or
 rejects a caller-supplied `cf-connecting-ip`. That gateway behavior must be
 observed at the deployed function boundary before merging PR #75.
 
+Cloudflare's [HTTP header documentation](https://developers.cloudflare.com/fundamentals/reference/http-headers/)
+says `CF-Connecting-IP` is sent from Cloudflare's edge to an origin, and
+explains special behavior for Worker subrequests: in same-zone Worker
+subrequests its value can reflect `x-real-ip` as set by the Worker script.
+Supabase's hosted proxy chain is managed by Supabase; do not assume the
+Cloudflare origin-header statement alone documents every Supabase ingress
+path or Worker behavior. This staging probe checks the exact hosted Functions
+URL and route used by this project, at the time of the test. It is not a
+universal guarantee for other domains, alternate ingress paths, or future
+infrastructure changes.
+
 ## 1. Deploy a temporary, read-only probe to staging
 
 Create a temporary Edge Function named `trusted-ip-probe` in the staging
@@ -51,6 +62,9 @@ Include `apikey: <STAGING_PUBLISHABLE_KEY>` and
   `X-Real-IP: 198.51.100.78`, and
   `CF-Connecting-IP: 198.51.100.79`.
 - Repeat the forged test from a second network if available.
+- Use the standard `https://<project-ref>.supabase.co/functions/v1/...` route
+  shown above. If the application is later configured to invoke Functions
+  through another hostname or proxy, that route needs its own verification.
 
 The two RFC 5737 addresses above are documentation-only test values, not
 real client addresses. Do not publish actual client IPs in issue comments.
@@ -69,7 +83,10 @@ real client addresses. Do not publish actual client IPs in issue comments.
   this as a pass.
 
 The XFF and X-Real-IP fields are diagnostic only. PR #75 must continue to
-ignore them regardless of what the gateway returns.
+ignore them regardless of what the gateway returns. A pass is evidence only
+for the tested hosted route and observed test conditions; retain the explicit
+caveat that Supabase has not provided a complete public trust contract for all
+ingress paths in this runbook.
 
 ## 4. Cleanup and evidence
 
