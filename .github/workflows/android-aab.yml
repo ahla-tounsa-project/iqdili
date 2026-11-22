@@ -9,17 +9,17 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Check signing secrets
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           missing=0
@@ -56,15 +56,25 @@ jobs:
 
       - name: Prepare private upload key
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-key.jks"
-          chmod 600 "$RUNNER_TEMP/upload-key.jks"
-          keytool -list -keystore "$RUNNER_TEMP/upload-key.jks" -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" >/dev/null
-          echo "RELEASE_STORE_FILE=$RUNNER_TEMP/upload-key.jks" >> "$GITHUB_ENV"
+          umask 077
+          KEYSTORE="$RUNNER_TEMP/upload-key.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" >/dev/null
+          echo "RELEASE_STORE_FILE=$KEYSTORE" >> "$GITHUB_ENV"
 
       - name: Build signed release APK and Play AAB
         working-directory: android
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: gradle --no-daemon assembleRelease bundleRelease
 
       - name: Verify signed APK and AAB
@@ -78,18 +88,22 @@ jobs:
           unzip -t "$APK"
           unzip -t "$AAB"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "package: name='tn.ahlatounsa.app'"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "versionCode='2' versionName='1.1'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 "$APK"
           keytool -printcert -jarfile "$APK"
-          echo "Verified APK size: $(stat -c%s "$APK") bytes"
-          echo "Verified AAB size: $(stat -c%s "$AAB") bytes"
+          jarsigner -verify -verbose -certs "$AAB"
+          mkdir -p dist
+          cp "$APK" dist/ahla-tounsa.apk
+          cp "$AAB" dist/ahla-tounsa.aab
+          (cd dist && sha256sum ahla-tounsa.apk ahla-tounsa.aab > SHA256SUMS.txt)
+          echo "Verified APK size: $(stat -c%s dist/ahla-tounsa.apk) bytes"
+          echo "Verified AAB size: $(stat -c%s dist/ahla-tounsa.aab) bytes"
 
       - name: Upload signed release files
         uses: actions/upload-artifact@v6
         with:
           name: ahla-tounsa-signed-release
-          path: |
-            android/app/build/outputs/apk/release/app-release.apk
-            android/app/build/outputs/bundle/release/app-release.aab
+          path: dist/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
