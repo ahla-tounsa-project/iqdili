@@ -15,6 +15,7 @@ for name, path in FUNCTIONS.items():
     source = Path(path).read_text(encoding="utf-8")
     assert 'import { getTrustedClientIp } from "../_shared/client-ip.ts";' in source, name
     assert "getTrustedClientIp(req.headers)" in source, name
+    assert "if (!clientIp)" in source or "|| !clientIp" in source, name
     assert 'req.headers.get("x-forwarded-for")' not in source, name
     assert 'req.headers.get("x-real-ip")' not in source, name
 
@@ -28,5 +29,6 @@ for name in ("upload-pending-image", "submit-public-post"):
 
 print("PASS: all three endpoints call the shared trusted-IP helper.")
 print("PASS: the helper accepts only cf-connecting-ip and fails closed.")
+print("PASS: each endpoint rejects requests when the trusted IP is unavailable.")
 print("PASS: all database rate limiters remain enabled.")
 print("NOTE: unit/source tests cannot prove hosted gateway header rewriting.")
