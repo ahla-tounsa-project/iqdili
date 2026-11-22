@@ -42,8 +42,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/trusted-ip-probe
-          cat > /tmp/trusted-ip-probe/index.ts <<'EOF'
+          mkdir -p /tmp/trusted-ip-probe/supabase/functions/trusted-ip-probe
+          cat > /tmp/trusted-ip-probe/supabase/functions/trusted-ip-probe/index.ts <<'EOF'
           import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
           Deno.serve((req: Request) => {
