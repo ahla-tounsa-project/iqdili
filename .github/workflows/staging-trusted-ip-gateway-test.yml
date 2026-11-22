@@ -15,14 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      STAGING_PUBLISHABLE_KEY: ${{ secrets.STAGING_PUBLISHABLE_KEY }}
-      STAGING_TEST_USER_ACCESS_TOKEN: ${{ secrets.STAGING_TEST_USER_ACCESS_TOKEN }}
       PROJECT_REF: iaksqnyglraoybavydmb
       PROBE_NAME: trusted-ip-probe
     steps:
       - name: Validate staging-only configuration
         shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          STAGING_PUBLISHABLE_KEY: ${{ secrets.STAGING_PUBLISHABLE_KEY }}
+          STAGING_TEST_USER_ACCESS_TOKEN: ${{ secrets.STAGING_TEST_USER_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           test "$PROJECT_REF" = "iaksqnyglraoybavydmb"
@@ -79,6 +80,8 @@ jobs:
       - name: Deploy probe to Staging only
         id: deploy
         shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           test "$PROJECT_REF" = "iaksqnyglraoybavydmb"
@@ -89,6 +92,9 @@ jobs:
       - name: Test gateway header spoof resistance
         id: gateway-test
         shell: bash
+        env:
+          STAGING_PUBLISHABLE_KEY: ${{ secrets.STAGING_PUBLISHABLE_KEY }}
+          STAGING_TEST_USER_ACCESS_TOKEN: ${{ secrets.STAGING_TEST_USER_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           URL="https://${PROJECT_REF}.supabase.co/functions/v1/${PROBE_NAME}"
@@ -126,6 +132,8 @@ jobs:
       - name: Always delete temporary probe
         if: always() && steps.deploy.outcome != 'skipped'
         shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           test "$PROJECT_REF" = "iaksqnyglraoybavydmb"
