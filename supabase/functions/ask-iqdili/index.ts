@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { getTrustedClientIp } from "../_shared/client-ip.ts";
 const ALLOWED_ORIGINS = new Set(["https://saahbii1978s.github.io", "https://ahla-tounsa-project.github.io"]);
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +70,7 @@ Deno.serve(async (req: Request) => {
     // Supabase's hosted gateway logs expose cf-connecting-ip. Prefer this
     // Cloudflare-origin header and fail closed if it is absent; never trust
     // the caller-controlled first element of x-forwarded-for for rate limits.
-    const clientIp = req.headers.get("cf-connecting-ip")?.trim() || "";
+    const clientIp = getTrustedClientIp(req.headers);
     if (!supabaseUrl || !serviceRoleKey || !clientIp) {
       console.error("Ask rate-limit configuration or client IP is unavailable");
       return reply({ error: "خدمة الحماية مش متاحة مؤقتاً. عاود بعد شوية." }, 503);
