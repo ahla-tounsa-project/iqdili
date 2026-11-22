@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - "supabase/functions/ask-iqdili/index.ts"
+      - "supabase/functions/upload-pending-image/index.ts"
+      - "supabase/functions/submit-public-post/index.ts"
       - "tests/ask-iqdili-client-ip-contract.py"
       - ".github/workflows/ask-iqdili-client-ip-check.yml"
 
