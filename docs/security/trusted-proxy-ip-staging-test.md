@@ -22,6 +22,31 @@ URL and route used by this project, at the time of the test. It is not a
 universal guarantee for other domains, alternate ingress paths, or future
 infrastructure changes.
 
+## 0. Configure GitHub Actions secrets
+
+The repository workflow
+`.github/workflows/staging-trusted-ip-gateway-test.yml` is manually
+triggered and hard-pins the staging project ref. Before running it, add these
+three repository Actions secrets under **Settings → Secrets and variables →
+Actions**:
+
+- `SUPABASE_ACCESS_TOKEN`: a Supabase personal access token with permission
+  to deploy and delete Edge Functions in the staging project.
+- `STAGING_PUBLISHABLE_KEY`: the staging project's publishable API key.
+- `STAGING_TEST_USER_ACCESS_TOKEN`: a current access token (user JWT) for a
+  dedicated test user created only in the staging project's Auth.
+
+Do not use a production key, production user token, or a publishable key as
+the bearer token. Never commit secret values to the repository. User access
+tokens expire; refresh this secret with a newly issued staging test-user
+access token before a run if the previous token has expired.
+
+Run **Actions → Staging trusted proxy IP gateway test → Run workflow** on
+the PR branch. The workflow deploys only the read-only probe to the fixed
+staging project, sends baseline and forged-header requests, and attempts
+cleanup in an `always()` step. A failed cleanup is a failed workflow and
+must be resolved before treating the staging project as clean.
+
 ## 1. Deploy a temporary, read-only probe to staging
 
 Create a temporary Edge Function named `trusted-ip-probe` in the staging
