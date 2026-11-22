@@ -45,8 +45,11 @@ Deno.serve((req: Request) => {
 ```
 
 Do not add database access, email, AI, storage, or rate-limit calls. Do not
-disable JWT verification. Use only the staging project's publishable/anon key
-as the probe's `apikey` and bearer token.
+disable JWT verification. Use the staging project's publishable key only in
+the `apikey` header. For `Authorization: Bearer`, use a valid access token
+from a dedicated staging test user signed in to the staging project's Auth.
+Do not put a publishable key in the bearer header: it is an API key, not a
+user JWT. Never use a production user's access token for this staging test.
 
 ## 2. Send baseline and forged-header requests
 
@@ -55,7 +58,7 @@ From a client outside Supabase, send the same GET request twice to:
 `https://iaksqnyglraoybavydmb.supabase.co/functions/v1/trusted-ip-probe`
 
 Include `apikey: <STAGING_PUBLISHABLE_KEY>` and
-`Authorization: Bearer <STAGING_PUBLISHABLE_KEY>`.
+`Authorization: Bearer <STAGING_TEST_USER_ACCESS_TOKEN>`.
 
 - Baseline: send no forwarding headers. Record the returned fields.
 - Forged test: send `X-Forwarded-For: 198.51.100.77`,
@@ -68,6 +71,7 @@ Include `apikey: <STAGING_PUBLISHABLE_KEY>` and
 
 The two RFC 5737 addresses above are documentation-only test values, not
 real client addresses. Do not publish actual client IPs in issue comments.
+Never include the staging access token in logs, screenshots, or issue comments.
 
 ## 3. Pass/fail interpretation
 
