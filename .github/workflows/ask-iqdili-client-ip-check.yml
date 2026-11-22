@@ -1,0 +1,31 @@
+name: Trusted client IP source check
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "supabase/functions/ask-iqdili/index.ts"
+      - "supabase/functions/upload-pending-image/index.ts"
+      - "supabase/functions/submit-public-post/index.ts"
+      - "supabase/functions/_shared/client-ip.ts"
+      - "tests/ask-iqdili-client-ip-contract.py"
+      - "tests/client-ip.test.ts"
+      - ".github/workflows/ask-iqdili-client-ip-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  client-ip-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Test trusted IP helper against spoofed headers
+        run: deno test tests/client-ip.test.ts
+      - name: Check endpoint integration and rate limits
+        run: python3 tests/ask-iqdili-client-ip-contract.py
