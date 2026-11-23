@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { getTrustedClientIp } from "../_shared/client-ip.ts";
 const ALLOWED_ORIGINS = new Set(["https://saahbii1978s.github.io", "https://ahla-tounsa-project.github.io"]);
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -66,11 +67,8 @@ Deno.serve(async (req: Request) => {
     }
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const forwardedFor = req.headers.get("x-forwarded-for") || "";
-    const clientIp = forwardedFor.split(",")[0].trim()
-      || req.headers.get("cf-connecting-ip")?.trim()
-      || req.headers.get("x-real-ip")?.trim()
-      || "";
+    // Trust only the IP header supplied by the hosted Cloudflare gateway.
+    const clientIp = getTrustedClientIp(req.headers);
     if (!supabaseUrl || !serviceRoleKey || !clientIp) {
       console.error("Ask rate-limit configuration or client IP is unavailable");
       return reply({ error: "خدمة الحماية مش متاحة مؤقتاً. عاود بعد شوية." }, 503);
