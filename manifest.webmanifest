@@ -1,0 +1,35 @@
+{
+  "id": "/iqdili/",
+  "name": "أحلى توانسة",
+  "short_name": "أحلى توانسة",
+  "description": "خدماتك وفرصتك وعقارك في بلاصة وحدة. منصة تونسية تجمع الخدمات وفرص العمل والعقارات والسوق في فضاء واحد.",
+  "lang": "ar-TN",
+  "dir": "rtl",
+  "start_url": "/iqdili/",
+  "scope": "/iqdili/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8f7f2",
+  "theme_color": "#f8f7f2",
+  "categories": ["business", "social"],
+  "icons": [
+    {
+      "src": "/iqdili/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/iqdili/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/iqdili/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
