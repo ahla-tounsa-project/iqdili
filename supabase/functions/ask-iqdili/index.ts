@@ -16,7 +16,7 @@ function getPlatformOverviewAnswer(question: string): string | null {
     .toLowerCase()
     .replace(/[ًٌٍَُِّْـ]/g, "")
     .replace(/[؟?!.،,:؛]/g, " ")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
   const asksAboutPlatform = /أحلى توانسة|احلى توانسة|المنصة|الموقع/.test(normalized);
   const asksAboutSections = /شنوة|شنو|شنيا|ماهي|ما هي|شنية|شنوما|اش|أش|ما الموجود|الموجودة|الأقسام|الاقسام|الخدمات|الخدمة/.test(normalized);
@@ -33,7 +33,7 @@ function getPlatformOverviewAnswer(question: string): string | null {
     "• المنشورات الحية: لمتابعة المنشورات الظاهرة على المنصة.",
     "• CV من أجل الخير: للمساعدة في إعداد سيرة ذاتية.",
     "وتوجد كذلك أقسام حسابي والإدارة والتواصل مع الإدارة. ظهور الإعلانات للعموم يخضع للمراجعة والقبول؛ موش كل إعلان تجريبي أو معلّق يكون منشوراً."
-  ].join("\\n");
+  ].join("\n");
 }
 
 async function sendAdminAlert(subject: string, textContent: string): Promise<void> {
