@@ -23,13 +23,11 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           STAGING_PUBLISHABLE_KEY: ${{ secrets.STAGING_PUBLISHABLE_KEY }}
-          STAGING_TEST_USER_ACCESS_TOKEN: ${{ secrets.STAGING_TEST_USER_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           test "$PROJECT_REF" = "iaksqnyglraoybavydmb"
           test -n "$SUPABASE_ACCESS_TOKEN"
           test -n "$STAGING_PUBLISHABLE_KEY"
-          test -n "$STAGING_TEST_USER_ACCESS_TOKEN"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,7 +58,7 @@ jobs:
           project_id = "iaksqnyglraoybavydmb"
 
           [functions.trusted-ip-probe]
-          verify_jwt = true
+          verify_jwt = false
           EOF
           cat > /tmp/trusted-ip-probe/supabase/functions/trusted-ip-probe/index.ts <<'EOF'
           import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -96,24 +94,34 @@ jobs:
         shell: bash
         env:
           STAGING_PUBLISHABLE_KEY: ${{ secrets.STAGING_PUBLISHABLE_KEY }}
-          STAGING_TEST_USER_ACCESS_TOKEN: ${{ secrets.STAGING_TEST_USER_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           URL="https://${PROJECT_REF}.supabase.co/functions/v1/${PROBE_NAME}"
           AUTH_ARGS=(
             -H "apikey: ${STAGING_PUBLISHABLE_KEY}"
-            -H "Authorization: Bearer ${STAGING_TEST_USER_ACCESS_TOKEN}"
             -H "Accept: application/json"
           )
 
-          baseline="$(curl --fail --silent --show-error "${AUTH_ARGS[@]}" "$URL")"
-          forged="$(curl --fail --silent --show-error "${AUTH_ARGS[@]}" \
+          request() {
+            local output_file="$1"
+            shift
+            local status
+            status="$(curl --silent --show-error --output "$output_file" --write-out '%{http_code}' "${AUTH_ARGS[@]}" "$@" "$URL")"
+            if [[ "$status" != "200" ]]; then
+              echo "::error::Gateway probe returned HTTP $status. Response body:"
+              cat "$output_file"
+              exit 1
+            fi
+          }
+
+          request /tmp/baseline.json
+          request /tmp/forged.json \
             -H "X-Forwarded-For: 198.51.100.77" \
             -H "X-Real-IP: 198.51.100.78" \
-            -H "CF-Connecting-IP: 198.51.100.79" "$URL")"
+            -H "CF-Connecting-IP: 198.51.100.79"
 
-          baseline_cf="$(jq -r '.cf_connecting_ip // empty' <<< "$baseline")"
-          forged_cf="$(jq -r '.cf_connecting_ip // empty' <<< "$forged")"
+          baseline_cf="$(jq -r '.cf_connecting_ip // empty' /tmp/baseline.json)"
+          forged_cf="$(jq -r '.cf_connecting_ip // empty' /tmp/forged.json)"
 
           if [[ -z "$baseline_cf" || -z "$forged_cf" ]]; then
             echo "::error::INCONCLUSIVE: CF-Connecting-IP missing from baseline or forged response."
