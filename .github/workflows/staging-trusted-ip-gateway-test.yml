@@ -102,41 +102,41 @@ jobs:
             -H "Accept: application/json"
           )
 
-          request() {
-            local output_file="$1"
-            shift
-            local status
-            status="$(curl --silent --show-error --output "$output_file" --write-out '%{http_code}' "${AUTH_ARGS[@]}" "$@" "$URL")"
-            if [[ "$status" != "200" ]]; then
-              echo "::error::Gateway probe returned HTTP $status. Response body:"
-              cat "$output_file"
-              exit 1
-            fi
-          }
-
-          request /tmp/baseline.json
-          request /tmp/forged.json \
-            -H "X-Forwarded-For: 198.51.100.77" \
-            -H "X-Real-IP: 198.51.100.78" \
-            -H "CF-Connecting-IP: 198.51.100.79"
-
+          baseline_status="$(curl --silent --show-error --output /tmp/baseline.json --write-out '%{http_code}' "${AUTH_ARGS[@]}" "$URL")"
+          if [[ "$baseline_status" != "200" ]]; then
+            echo "::error::Baseline request failed with HTTP $baseline_status."
+            cat /tmp/baseline.json
+            exit 1
+          fi
           baseline_cf="$(jq -r '.cf_connecting_ip // empty' /tmp/baseline.json)"
-          forged_cf="$(jq -r '.cf_connecting_ip // empty' /tmp/forged.json)"
-
-          if [[ -z "$baseline_cf" || -z "$forged_cf" ]]; then
-            echo "::error::INCONCLUSIVE: CF-Connecting-IP missing from baseline or forged response."
-            exit 1
-          fi
-          if [[ "$forged_cf" == "198.51.100.79" ]]; then
-            echo "::error::FAIL: gateway accepted caller-supplied CF-Connecting-IP."
-            exit 1
-          fi
-          if [[ "$baseline_cf" != "$forged_cf" ]]; then
-            echo "::error::INCONCLUSIVE: trusted client IP changed between same-run requests."
+          if [[ -z "$baseline_cf" ]]; then
+            echo "::error::INCONCLUSIVE: baseline response has no CF-Connecting-IP."
             exit 1
           fi
 
-          echo "PASS: forged CF-Connecting-IP was not accepted; both requests saw the same gateway client IP."
+          forwarded_status="$(curl --silent --show-error --output /tmp/forwarded.json --write-out '%{http_code}' "${AUTH_ARGS[@]}" \
+            -H "X-Forwarded-For: 198.51.100.77" \
+            -H "X-Real-IP: 198.51.100.78" "$URL")"
+          if [[ "$forwarded_status" != "200" ]]; then
+            echo "::error::Forwarding-header-only request failed with HTTP $forwarded_status."
+            cat /tmp/forwarded.json
+            exit 1
+          fi
+          forwarded_cf="$(jq -r '.cf_connecting_ip // empty' /tmp/forwarded.json)"
+          if [[ -z "$forwarded_cf" || "$forwarded_cf" != "$baseline_cf" ]]; then
+            echo "::error::FAIL: X-Forwarded-For or X-Real-IP changed the gateway client IP."
+            exit 1
+          fi
+
+          forged_status="$(curl --silent --show-error --output /tmp/forged-cf.json --write-out '%{http_code}' "${AUTH_ARGS[@]}" \
+            -H "CF-Connecting-IP: 198.51.100.79" "$URL")"
+          if [[ "$forged_status" != "403" ]] || ! grep -Fq "error code: 1000" /tmp/forged-cf.json; then
+            echo "::error::INCONCLUSIVE: expected Cloudflare to reject the caller-supplied CF-Connecting-IP with HTTP 403 / error code 1000; received HTTP $forged_status."
+            cat /tmp/forged-cf.json
+            exit 1
+          fi
+
+          echo "PASS: baseline had a trusted client IP; X-Forwarded-For and X-Real-IP did not change it; Cloudflare rejected a caller-supplied CF-Connecting-IP."
           echo "No IP values or credentials are printed."
 
       - name: Always delete temporary probe
