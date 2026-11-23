@@ -447,10 +447,22 @@ $anon_role_test$;
 
 reset role;
 do $privacy_surface_test$
+declare
+  public_view_options text[];
+  moderation_view_options text[];
 begin
   if has_column_privilege('anon', 'public.post_comments', 'user_id', 'select')
      or has_column_privilege('authenticated', 'public.post_comments', 'user_id', 'select') then
     raise exception 'Client role can still read raw comment author UUIDs';
+  end if;
+  if has_column_privilege('authenticated', 'public.post_comments', 'created_at', 'insert')
+     or has_column_privilege('authenticated', 'public.post_comments', 'updated_at', 'insert') then
+    raise exception 'Client can forge server-owned comment timestamps';
+  end if;
+  if not has_column_privilege('authenticated', 'public.post_comments', 'post_table', 'insert')
+     or not has_column_privilege('authenticated', 'public.post_comments', 'user_id', 'insert')
+     or not has_column_privilege('authenticated', 'public.post_comments', 'body', 'insert') then
+    raise exception 'Signed-in members lack required column-level insert privileges';
   end if;
   if not has_table_privilege('anon', 'public.post_comments_public', 'select') then
     raise exception 'Anonymous visitors cannot read the privacy-safe comments view';
@@ -459,11 +471,17 @@ begin
      or has_table_privilege('authenticated', 'public.post_comments', 'update')
      or has_table_privilege('authenticated', 'public.post_comments', 'delete')
      or has_table_privilege('anon', 'public.post_comments', 'select')
-     or has_table_privilege('anon', 'public.post_comments', 'insert') then
-    raise exception 'Client roles retain forbidden raw-table privileges';
+     or has_table_privilege('anon', 'public.post_comments', 'insert')
+     or has_table_privilege('authenticated', 'public.post_comments', 'insert') then
+    raise exception 'Client roles retain forbidden table-level privileges';
   end if;
-  if not has_table_privilege('authenticated', 'public.post_comments', 'insert') then
-    raise exception 'Signed-in members cannot insert comments';
+  select reloptions into public_view_options
+  from pg_class where oid='public.post_comments_public'::regclass;
+  select reloptions into moderation_view_options
+  from pg_class where oid='public.post_comments_moderation'::regclass;
+  if not (coalesce(public_view_options, '{}') @> array['security_invoker=true'])
+     or not (coalesce(moderation_view_options, '{}') @> array['security_invoker=true']) then
+    raise exception 'Comment views must run with SECURITY INVOKER';
   end if;
 end;
 $privacy_surface_test$;
