@@ -244,18 +244,44 @@ using (user_id = (select auth.uid()));
 
 -- Client roles may create comments, but cannot read or mutate the base table.
 -- Reads use the privacy-safe view; edits, deletes and moderation use guarded RPCs.
+-- Clients can read only non-identifying columns through RLS; timestamps remain server-owned.
 revoke all on public.post_comments from public, anon, authenticated;
-grant insert on public.post_comments to authenticated;
+grant select (id, post_table, post_id, parent_id, body, status, created_at)
+  on public.post_comments to anon, authenticated;
+grant insert (post_table, post_id, parent_id, user_id, body, status)
+  on public.post_comments to authenticated;
+revoke execute on function public.is_admin() from anon;
 
 
--- Expose a privacy-safe read surface: never return the author's UUID to clients.
--- The view applies the same public-post and visible-parent constraints as the table RLS.
-create or replace view public.post_comments_public
-with (security_barrier = true)
+-- Determine ownership without exposing the author's UUID through the public view.
+create or replace function ahla_internal.is_own_post_comment(p_comment_id bigint)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $
+  select (select auth.uid()) is not null
+     and exists (
+       select 1 from public.post_comments c
+       where c.id = p_comment_id
+         and c.user_id = (select auth.uid())
+     );
+$;
+revoke all on function ahla_internal.is_own_post_comment(bigint) from public;
+grant execute on function ahla_internal.is_own_post_comment(bigint) to anon, authenticated;
+
+-- Views must run as the caller so PostgreSQL applies the base table's RLS policies.
+-- Drop the earlier draft shape before recreating it without author UUIDs.
+drop view if exists public.post_comments_moderation;
+drop view if exists public.post_comments_public;
+
+create view public.post_comments_public
+with (security_barrier = true, security_invoker = true)
 as
 select
   c.id, c.post_table, c.post_id, c.parent_id, c.body, c.created_at,
-  (c.user_id = (select auth.uid())) as is_mine
+  ahla_internal.is_own_post_comment(c.id) as is_mine
 from public.post_comments c
 where c.status = 'published'
   and ahla_internal.comment_target_is_public(c.post_table, c.post_id)
@@ -263,16 +289,13 @@ where c.status = 'published'
     c.parent_id is null
     or ahla_internal.comment_parent_is_public(c.parent_id, c.post_table, c.post_id)
   );
-
--- Base-table privileges remain restricted; preserve authenticated INSERT granted above.
-
 grant select on public.post_comments_public to anon, authenticated;
 
--- Moderation gets a separate privileged read surface, including hidden rows.
-create or replace view public.post_comments_moderation
-with (security_barrier = true)
+-- Moderation view also respects RLS and omits author UUIDs.
+create view public.post_comments_moderation
+with (security_barrier = true, security_invoker = true)
 as
-select c.*
+select c.id, c.post_table, c.post_id, c.parent_id, c.body, c.status, c.created_at
 from public.post_comments c
 where public.is_admin();
 grant select on public.post_comments_moderation to authenticated;
