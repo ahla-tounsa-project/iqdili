@@ -9,6 +9,7 @@ on:
       - "supabase/functions/submit-public-post/index.ts"
       - "supabase/functions/_shared/client-ip.ts"
       - "tests/ask-iqdili-client-ip-contract.py"
+      - "tests/ask-iqdili-platform-context.py"
       - "tests/client-ip.test.ts"
       - ".github/workflows/ask-iqdili-client-ip-check.yml"
 
@@ -29,3 +30,5 @@ jobs:
         run: deno test tests/client-ip.test.ts
       - name: Check endpoint integration and rate limits
         run: python3 tests/ask-iqdili-client-ip-contract.py
+      - name: Check grounded platform answers
+        run: python3 tests/ask-iqdili-platform-context.py
