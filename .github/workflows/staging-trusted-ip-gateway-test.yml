@@ -1,0 +1,143 @@
+name: Staging trusted proxy IP gateway test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-trusted-ip-gateway-test
+  cancel-in-progress: false
+
+jobs:
+  gateway-spoof-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PROJECT_REF: iaksqnyglraoybavydmb
+      PROBE_NAME: trusted-ip-probe
+    steps:
+      - name: Validate staging-only configuration
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          STAGING_PUBLISHABLE_KEY: ${{ secrets.STAGING_PUBLISHABLE_KEY }}
+          STAGING_TEST_USER_ACCESS_TOKEN: ${{ secrets.STAGING_TEST_USER_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = "iaksqnyglraoybavydmb"
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$STAGING_PUBLISHABLE_KEY"
+          test -n "$STAGING_TEST_USER_ACCESS_TOKEN"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Ensure probe name is unused in Staging
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          deployed="$(supabase functions list --project-ref "$PROJECT_REF")"
+          if grep -Fq "$PROBE_NAME" <<< "$deployed"; then
+            echo "::error::Refusing to overwrite an existing staging function named $PROBE_NAME."
+            exit 1
+          fi
+
+      - name: Create isolated probe source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/trusted-ip-probe/supabase/functions/trusted-ip-probe
+          cat > /tmp/trusted-ip-probe/supabase/config.toml <<'EOF'
+          project_id = "iaksqnyglraoybavydmb"
+
+          [functions.trusted-ip-probe]
+          verify_jwt = true
+          EOF
+          cat > /tmp/trusted-ip-probe/supabase/functions/trusted-ip-probe/index.ts <<'EOF'
+          import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
+          Deno.serve((req: Request) => {
+            if (req.method !== "GET") {
+              return new Response("Method not allowed", { status: 405 });
+            }
+            return Response.json({
+              cf_connecting_ip: req.headers.get("cf-connecting-ip"),
+              x_forwarded_for: req.headers.get("x-forwarded-for"),
+              x_real_ip: req.headers.get("x-real-ip"),
+            }, {
+              headers: { "Cache-Control": "no-store" },
+            });
+          });
+          EOF
+
+      - name: Deploy probe to Staging only
+        id: deploy
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = "iaksqnyglraoybavydmb"
+          supabase functions deploy "$PROBE_NAME" \
+            --project-ref "$PROJECT_REF" --use-api --yes \
+            --workdir /tmp/trusted-ip-probe
+
+      - name: Test gateway header spoof resistance
+        id: gateway-test
+        shell: bash
+        env:
+          STAGING_PUBLISHABLE_KEY: ${{ secrets.STAGING_PUBLISHABLE_KEY }}
+          STAGING_TEST_USER_ACCESS_TOKEN: ${{ secrets.STAGING_TEST_USER_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="https://${PROJECT_REF}.supabase.co/functions/v1/${PROBE_NAME}"
+          AUTH_ARGS=(
+            -H "apikey: ${STAGING_PUBLISHABLE_KEY}"
+            -H "Authorization: Bearer ${STAGING_TEST_USER_ACCESS_TOKEN}"
+            -H "Accept: application/json"
+          )
+
+          baseline="$(curl --fail --silent --show-error "${AUTH_ARGS[@]}" "$URL")"
+          forged="$(curl --fail --silent --show-error "${AUTH_ARGS[@]}" \
+            -H "X-Forwarded-For: 198.51.100.77" \
+            -H "X-Real-IP: 198.51.100.78" \
+            -H "CF-Connecting-IP: 198.51.100.79" "$URL")"
+
+          baseline_cf="$(jq -r '.cf_connecting_ip // empty' <<< "$baseline")"
+          forged_cf="$(jq -r '.cf_connecting_ip // empty' <<< "$forged")"
+
+          if [[ -z "$baseline_cf" || -z "$forged_cf" ]]; then
+            echo "::error::INCONCLUSIVE: CF-Connecting-IP missing from baseline or forged response."
+            exit 1
+          fi
+          if [[ "$forged_cf" == "198.51.100.79" ]]; then
+            echo "::error::FAIL: gateway accepted caller-supplied CF-Connecting-IP."
+            exit 1
+          fi
+          if [[ "$baseline_cf" != "$forged_cf" ]]; then
+            echo "::error::INCONCLUSIVE: trusted client IP changed between same-run requests."
+            exit 1
+          fi
+
+          echo "PASS: forged CF-Connecting-IP was not accepted; both requests saw the same gateway client IP."
+          echo "No IP values or credentials are printed."
+
+      - name: Always delete temporary probe
+        if: always() && steps.deploy.outcome != 'skipped'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = "iaksqnyglraoybavydmb"
+          supabase functions delete "$PROBE_NAME" \
+            --project-ref "$PROJECT_REF" --yes
