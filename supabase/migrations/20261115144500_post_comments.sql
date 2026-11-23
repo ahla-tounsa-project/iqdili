@@ -260,14 +260,14 @@ language sql
 stable
 security definer
 set search_path = ''
-as $
+as $$
   select (select auth.uid()) is not null
      and exists (
        select 1 from public.post_comments c
        where c.id = p_comment_id
          and c.user_id = (select auth.uid())
      );
-$;
+$$;
 revoke all on function ahla_internal.is_own_post_comment(bigint) from public;
 grant execute on function ahla_internal.is_own_post_comment(bigint) to anon, authenticated;
 
