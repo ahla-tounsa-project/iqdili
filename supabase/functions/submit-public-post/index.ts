@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { getTrustedClientIp } from "../_shared/client-ip.ts";
 
-const ALLOWED_ORIGINS = new Set(["https://saahbii1978s.github.io", "https://ahla-tounsa-project.github.io"]);
+const ALLOWED_ORIGINS = new Set(["https://ahla-tounsa-project.github.io"]);
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -176,7 +176,7 @@ Deno.serve(async (req: Request) => {
       body: new URLSearchParams({ secret: turnstileSecret, response: token }),
     });
     const verification = await verificationResponse.json().catch(() => ({}));
-    if (!verificationResponse.ok || verification.success !== true || !["saahbii1978s.github.io", "ahla-tounsa-project.github.io"].includes(verification.hostname)) {
+    if (!verificationResponse.ok || verification.success !== true || !["ahla-tounsa-project.github.io"].includes(verification.hostname)) {
       console.warn("Turnstile verification rejected", verification["error-codes"] || []);
       return reply({ error: "التحقق ما نجحش. عاود التحقق من Cloudflare." }, 403);
     }
