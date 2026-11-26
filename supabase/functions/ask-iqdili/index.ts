@@ -169,7 +169,21 @@ Deno.serve(async (req: Request) => {
       signal: AbortSignal.timeout(30000)
     });
     if (!aiResponse.ok) {
-      console.error("Groq request failed", aiResponse.status);
+      const groqErrorBody = await aiResponse.text().catch(() => "");
+      let groqErrorDetail = groqErrorBody;
+      try {
+        const parsedGroqError = JSON.parse(groqErrorBody);
+        groqErrorDetail = parsedGroqError?.error?.message ||
+          parsedGroqError?.message ||
+          groqErrorBody;
+      } catch {
+        // Keep the bounded response text for non-JSON provider errors.
+      }
+      console.error(
+        "Groq request failed",
+        aiResponse.status,
+        groqErrorDetail.slice(0, 1000)
+      );
       return reply({ error: "صار خلل مؤقت في إعداد الإجابة. عاود بعد شوية." }, 502);
     }
     const aiData = await aiResponse.json().catch(() => ({}));
