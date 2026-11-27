@@ -75,7 +75,11 @@ create table if not exists public.storage_cleanup_jobs (
     and object_path !~ '(^|/)\.\.(/|$)'
     and object_path !~ '(^|/)\.(/|$)'
     and object_path !~ '//'
-    and object_path ~* $re$^[a-zA-Z0-9_./-]+\.(jpg|jpeg|png|webp)$re$
+    and object_path !~ '[^a-zA-Z0-9_./-]'
+    and (
+      pg_catalog.lower(pg_catalog.right(object_path, 4)) in ('.jpg', '.png')
+      or pg_catalog.lower(pg_catalog.right(object_path, 5)) in ('.jpeg', '.webp')
+    )
   ),
   status text not null default 'staged' check (status in ('staged','pending','processing','completed','dead_letter')),
   attempts integer not null default 0 check (attempts >= 0),
