@@ -184,6 +184,13 @@ begin
   delete from public.storage_cleanup_jobs
    where bucket='listing-images' and object_path='services/uppercase.JPG';
 
+  begin
+    insert into public.storage_cleanup_jobs(bucket,object_path)
+    values ('listing-images','services/uppercase.JPG/evil');
+    raise exception 'Expected trailing path data after image extension to be rejected';
+  exception when check_violation then null;
+  end;
+
   -- Approval is an atomic compare-and-set: only the exact reviewed pending snapshot can publish.
   perform pg_catalog.set_config('request.jwt.claim.sub', u1::text, true);
   insert into public.service_requests(user_id,title,description,status,image_urls)
