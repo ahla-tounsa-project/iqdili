@@ -15,6 +15,11 @@ Deno.test("rejects unsupported buckets", () => {
   assertThrows(() => buildStorageCleanupJobs(["private"], ["services/a.jpg"]));
 });
 
+Deno.test("accepts uppercase image extensions consistently", () => {
+  assertEquals(isValidStorageObjectPath("services/uppercase.JPG"), true);
+  assertEquals(isValidStorageObjectPath("services/mixed.JpEg"), true);
+});
+
 Deno.test("rejects traversal and malformed paths", () => {
   for (const path of ["../a.jpg", "services/../a.jpg", "services//a.jpg", "/services/a.jpg", "services/a.svg"]) {
     assertThrows(() => buildStorageCleanupJobs(["listing-images"], [path]));
