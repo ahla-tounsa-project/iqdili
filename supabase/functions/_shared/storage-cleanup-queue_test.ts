@@ -21,7 +21,7 @@ Deno.test("accepts uppercase image extensions consistently", () => {
 });
 
 Deno.test("rejects traversal and malformed paths", () => {
-  for (const path of ["../a.jpg", "services/../a.jpg", "services//a.jpg", "/services/a.jpg", "services/a.svg"]) {
+  for (const path of ["../a.jpg", "services/../a.jpg", "services//a.jpg", "/services/a.jpg", "services/a.svg", "services/a.jpg/evil"]) {
     assertThrows(() => buildStorageCleanupJobs(["listing-images"], [path]));
   }
 });
