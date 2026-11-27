@@ -172,6 +172,18 @@ begin
   exception when check_violation then null;
   end;
 
+  -- SQL must accept the same case-insensitive image extensions as the Edge validator.
+  insert into public.storage_cleanup_jobs(bucket,object_path)
+  values ('listing-images','services/uppercase.JPG');
+  if not exists (
+    select 1 from public.storage_cleanup_jobs
+     where bucket='listing-images' and object_path='services/uppercase.JPG'
+  ) then
+    raise exception 'Uppercase image extension was rejected by the cleanup queue';
+  end if;
+  delete from public.storage_cleanup_jobs
+   where bucket='listing-images' and object_path='services/uppercase.JPG';
+
   -- Approval is an atomic compare-and-set: only the exact reviewed pending snapshot can publish.
   perform pg_catalog.set_config('request.jwt.claim.sub', u1::text, true);
   insert into public.service_requests(user_id,title,description,status,image_urls)
