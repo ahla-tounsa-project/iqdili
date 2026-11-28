@@ -2027,7 +2027,9 @@ function recordSitePageView(pageId){
  if(!db||!pageId||pageId==="admin"||pageId==="reset-password")return;
  const allowed=["home","services","jobs","realty","market","good","guide","cv","ask","saved","account"];
  if(!allowed.includes(pageId))return;
- db.rpc("record_site_page_view",{p_page_key:pageId}).then(({error})=>{if(error)console.warn("Aggregate page analytics:",error.message);}).catch(error=>console.warn("Aggregate page analytics:",error));
+ const sessionId=getSitePresenceSessionId();
+ if(!sessionId)return;
+ db.rpc("record_site_page_view",{p_page_key:pageId,p_session_id:sessionId}).then(({error})=>{if(error)console.warn("Aggregate page analytics:",error.message);}).catch(error=>console.warn("Aggregate page analytics:",error));
 }
 
 let sitePresenceStarted=false;
