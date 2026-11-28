@@ -2035,11 +2035,20 @@ function recordSitePageView(pageId){
 let sitePresenceStarted=false;
 function getSitePresenceSessionId(){
  try{
-  let token=sessionStorage.getItem("ahla-site-presence-session");
-  if(token&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token))return token;
+  const tokenKey="ahla-site-presence-session";
+  const startedKey="ahla-site-presence-session-started";
+  let token=sessionStorage.getItem(tokenKey);
+  let startedAt=Number(sessionStorage.getItem(startedKey)||0);
+  const validToken=token&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token);
+  if(validToken&&startedAt&&Date.now()-startedAt<30*60*1000)return token;
+  if(validToken&&!startedAt){
+   sessionStorage.setItem(startedKey,String(Date.now()));
+   return token;
+  }
   if(!window.crypto||typeof window.crypto.randomUUID!=="function")return "";
   token=window.crypto.randomUUID();
-  sessionStorage.setItem("ahla-site-presence-session",token);
+  sessionStorage.setItem(tokenKey,token);
+  sessionStorage.setItem(startedKey,String(Date.now()));
   return token;
  }catch(error){return "";}
 }
@@ -2062,10 +2071,11 @@ async function startSitePresence(){
   console.warn("Temporary site presence authorization:",error);
   return;
  }
- const token=getSitePresenceSessionId();
- if(!token)return;
+ if(!getSitePresenceSessionId())return;
  const heartbeat=()=>{
   if(!db)return;
+  const token=getSitePresenceSessionId();
+  if(!token)return;
   db.rpc("heartbeat_site_presence",{p_session_id:token}).then(({error})=>{
    if(error)console.warn("Temporary site presence:",error.message);
   }).catch(error=>console.warn("Temporary site presence:",error));
